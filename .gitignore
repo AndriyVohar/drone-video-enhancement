@@ -1,0 +1,40 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Output directories
+output/
+demo_output/
+quickstart_output/
+input/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Video files (can be large)
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Test outputs
+*.png
+*.jpg
+*.jpeg
+def apply_blur(img, blur_type='motion'):
+!README_assets/~
