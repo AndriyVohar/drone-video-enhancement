@@ -36,5 +36,4 @@ Thumbs.db
 *.png
 *.jpg
 *.jpeg
-def apply_blur(img, blur_type='motion'):
-!README_assets/~
+!README_assets/

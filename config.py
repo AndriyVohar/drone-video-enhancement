@@ -3,6 +3,10 @@ Configuration file for video deblurring and enhancement.
 All parameters for classical image processing pipeline.
 """
 
+# GPU Acceleration
+USE_GPU = True  # Set to False to force CPU processing
+GPU_BATCH_SIZE = 10  # Number of frames to process on GPU before clearing memory
+
 # Video I/O
 INPUT_VIDEO_PATH = "input/drone_auto.mp4"
 OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
@@ -41,4 +45,3 @@ ENABLE_STABILIZATION = True
 
 # Processing
 CONVERT_TO_GRAYSCALE = True
-
