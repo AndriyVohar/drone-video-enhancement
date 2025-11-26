@@ -1,47 +1,79 @@
 """
-Configuration file for video deblurring and enhancement.
-All parameters for classical image processing pipeline.
+Configuration file for drone video enhancement
 """
 
-# GPU Acceleration
-USE_GPU = True  # Set to False to force CPU processing
-GPU_BATCH_SIZE = 10  # Number of frames to process on GPU before clearing memory
+# ========================================
+# GPU SETTINGS
+# ========================================
+USE_GPU = True  # Set to False to use CPU only
 
-# Video I/O
+# ========================================
+# INPUT/OUTPUT
+# ========================================
 INPUT_VIDEO_PATH = "input/drone_auto.mp4"
 OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
 
-# Denoising parameters
-DENOISE_METHOD = "nlm"  # Options: "gaussian", "bilateral", "nlm"
-GAUSSIAN_SIGMA = 1.0
+# ========================================
+# PREPROCESSING
+# ========================================
+CONVERT_TO_GRAYSCALE = False  # Keep color by default
+
+# Denoising method: "none", "gaussian", "bilateral", "nlm"
+DENOISE_METHOD = "bilateral"
+
+# Gaussian denoising parameters
+GAUSSIAN_SIGMA = 1.5
+
+# Bilateral filter parameters
 BILATERAL_D = 9
 BILATERAL_SIGMA_COLOR = 75
 BILATERAL_SIGMA_SPACE = 75
+
+# Non-local means denoising parameters
 NLM_H = 10
 NLM_PATCH_SIZE = 7
 NLM_SEARCH_SIZE = 21
 
-# PSF parameters
-PSF_TYPE = "estimate"  # Options: "motion", "gaussian", "estimate"
+# ========================================
+# POINT SPREAD FUNCTION (PSF)
+# ========================================
+# PSF type: "motion" or "gaussian"
+PSF_TYPE = "motion"
+PSF_SIZE = (15, 15)
+
+# Motion blur PSF parameters
 MOTION_LENGTH = 15
 MOTION_ANGLE = 45
-GAUSSIAN_PSF_SIZE = 15
-GAUSSIAN_PSF_SIGMA = 5.0
-PSF_SIZE = 31
 
-# Deblurring parameters
-DEBLUR_METHOD = "wiener"  # Options: "wiener", "tikhonov", "richardson_lucy"
+# Gaussian PSF parameters
+GAUSSIAN_PSF_SIZE = (15, 15)
+GAUSSIAN_PSF_SIGMA = 5.0
+
+# ========================================
+# DECONVOLUTION/DEBLURRING
+# ========================================
+# Deblurring method: "none", "wiener", "tikhonov", "richardson_lucy"
+DEBLUR_METHOD = "wiener"
+
+# Wiener filter parameter (noise-to-signal ratio)
 WIENER_K = 0.01
+
+# Tikhonov regularization parameter
 TIKHONOV_ALPHA = 0.01
+
+# Richardson-Lucy iterations
 RL_ITERATIONS = 10
 
-# Enhancement parameters
+# ========================================
+# POST-PROCESSING
+# ========================================
+# Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
 APPLY_CLAHE = True
 CLAHE_CLIP_LIMIT = 2.0
 CLAHE_TILE_GRID_SIZE = (8, 8)
 
-# Stabilization
-ENABLE_STABILIZATION = True
+# Apply additional sharpening
+APPLY_SHARPENING = True
+SHARPENING_AMOUNT = 0.3
 
-# Processing
-CONVERT_TO_GRAYSCALE = True
+ENABLE_STABILIZATION = False

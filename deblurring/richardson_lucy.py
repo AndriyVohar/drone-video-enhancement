@@ -1,128 +1,101 @@
 """
-Richardson-Lucy deconvolution algorithm.
+Richardson-Lucy deconvolution implementation (CPU version).
 """
 import numpy as np
-from scipy import signal
+from utils.fft_tools import psf2otf
 
 
-def richardson_lucy(img: np.ndarray, psf: np.ndarray, iterations: int = 10) -> np.ndarray:
+def richardson_lucy_fft(image, psf, iterations=10):
     """
-    Apply Richardson-Lucy deconvolution algorithm.
-
-    This is an iterative algorithm that maximizes likelihood assuming Poisson noise.
-
-    Algorithm:
-    f^(k+1) = f^(k) · [(g / (h * f^(k))) * h_flipped]
-
-    where:
-    - f^(k) is the estimate at iteration k
-    - g is the observed blurred image
-    - h is the PSF
-    - * denotes convolution
-    - h_flipped is the PSF flipped (for correlation)
+    Richardson-Lucy deconvolution using FFT for speed (CPU version).
 
     Args:
-        img: Blurred input image (grayscale, float, non-negative)
-        psf: Point Spread Function kernel
+        image: Blurred input image (2D or 3D numpy array, float)
+        psf: Point spread function (2D array)
         iterations: Number of iterations
 
     Returns:
-        Deblurred image
+        Deblurred image (numpy array, float)
     """
-    # Ensure image is float and non-negative
-    img = img.astype(np.float64)
-    img = np.maximum(img, 0) + 1e-10  # Add small epsilon to avoid division by zero
+    # Handle color images by processing each channel separately
+    if len(image.shape) == 3:
+        # Color image - process each channel
+        result = np.zeros_like(image)
+        for channel in range(image.shape[2]):
+            result[:, :, channel] = richardson_lucy_fft(image[:, :, channel], psf, iterations)
+        return result
 
-    # Normalize PSF
-    psf = psf.astype(np.float64)
-    psf = psf / (np.sum(psf) + 1e-10)
+    # Grayscale image processing
+    # Initialize estimate with blurred image
+    estimate = np.copy(image)
 
-    # Flip PSF for correlation
+    # Add small epsilon to avoid division by zero
+    epsilon = 1e-10
+    estimate = np.maximum(estimate, epsilon)
+
+    # Precompute PSF and flipped PSF in frequency domain
+    otf = psf2otf(psf, image.shape)
     psf_flipped = np.flip(psf)
+    otf_flipped = psf2otf(psf_flipped, image.shape)
 
-    # Initialize estimate with the observed image
-    f_estimate = np.copy(img)
-
-    # Iterate
+    # Richardson-Lucy iterations
     for i in range(iterations):
-        # Convolve current estimate with PSF
-        # Using 'same' mode to keep same size
-        convolved = signal.convolve2d(f_estimate, psf, mode='same', boundary='symm')
-
-        # Avoid division by zero
-        convolved = np.maximum(convolved, 1e-10)
+        # Convolve estimate with PSF (using FFT)
+        estimate_fft = np.fft.fft2(estimate)
+        blurred_estimate_fft = estimate_fft * otf
+        blurred_estimate = np.real(np.fft.ifft2(blurred_estimate_fft))
+        blurred_estimate = np.maximum(blurred_estimate, epsilon)
 
         # Compute ratio
-        ratio = img / convolved
+        ratio = image / blurred_estimate
 
-        # Correlate ratio with flipped PSF
-        correlation = signal.convolve2d(ratio, psf_flipped, mode='same', boundary='symm')
+        # Convolve ratio with flipped PSF (using FFT)
+        ratio_fft = np.fft.fft2(ratio)
+        correction_fft = ratio_fft * otf_flipped
+        correction = np.real(np.fft.ifft2(correction_fft))
 
         # Update estimate
-        f_estimate = f_estimate * correlation
+        estimate = estimate * correction
+        estimate = np.maximum(estimate, epsilon)
 
-        # Ensure non-negative
-        f_estimate = np.maximum(f_estimate, 0)
+    return estimate
+"""
+Wiener deconvolution implementation (CPU version).
+"""
+import numpy as np
+from utils.fft_tools import psf2otf
 
-    return f_estimate
 
-
-def richardson_lucy_fft(img: np.ndarray, psf: np.ndarray, iterations: int = 10) -> np.ndarray:
+def wiener_deconvolution(image, psf, K=0.01):
     """
-    Richardson-Lucy deconvolution using FFT for faster convolution.
-
-    Same algorithm as richardson_lucy but uses FFT-based convolution
-    for better performance on larger images.
+    Wiener deconvolution for image deblurring (CPU version).
 
     Args:
-        img: Blurred input image (grayscale, float, non-negative)
-        psf: Point Spread Function kernel
-        iterations: Number of iterations
+        image: Blurred input image (2D numpy array, float)
+        psf: Point spread function
+        K: Noise-to-signal power ratio (regularization parameter)
 
     Returns:
-        Deblurred image
+        Deblurred image (2D numpy array, float)
     """
-    from utils.fft_tools import psf_to_otf, fft2_img, ifft2_img
+    # Convert PSF to OTF
+    otf = psf2otf(psf, image.shape)
 
-    # Ensure image is float and non-negative
-    img = img.astype(np.float64)
-    img = np.maximum(img, 0) + 1e-10
+    # FFT of blurred image
+    image_fft = np.fft.fft2(image)
 
-    # Normalize PSF
-    psf = psf.astype(np.float64)
-    psf = psf / (np.sum(psf) + 1e-10)
+    # Wiener filter
+    otf_conj = np.conj(otf)
+    otf_abs_sq = np.abs(otf) ** 2
 
-    # Get OTF for PSF and flipped PSF
-    img_shape = img.shape
-    H = psf_to_otf(psf, img_shape)
+    # H* / (|H|^2 + K)
+    wiener_filter = otf_conj / (otf_abs_sq + K)
 
-    # Flip PSF for correlation
-    psf_flipped = np.flip(psf)
-    H_flipped = psf_to_otf(psf_flipped, img_shape)
+    # Apply filter in frequency domain
+    result_fft = image_fft * wiener_filter
 
-    # Initialize estimate
-    f_estimate = np.copy(img)
+    # Inverse FFT
+    result = np.fft.ifft2(result_fft)
 
-    # Iterate
-    for i in range(iterations):
-        # Convolve with PSF using FFT
-        F = fft2_img(f_estimate)
-        convolved = ifft2_img(H * F)
-        convolved = np.real(convolved)
-        convolved = np.maximum(convolved, 1e-10)
-
-        # Compute ratio
-        ratio = img / convolved
-
-        # Correlate with flipped PSF
-        R = fft2_img(ratio)
-        correlation = ifft2_img(H_flipped * R)
-        correlation = np.real(correlation)
-
-        # Update estimate
-        f_estimate = f_estimate * correlation
-        f_estimate = np.maximum(f_estimate, 0)
-
-    return f_estimate
-"""Deblurring algorithms using classical techniques."""
-
+    # Return real part
+    return np.real(result)

@@ -1,35 +1,32 @@
 """
-Gaussian PSF generation.
+Gaussian PSF (Point Spread Function) generation.
 """
 import numpy as np
+import cv2
 
 
-def gaussian_psf(size: int, sigma: float) -> np.ndarray:
+def gaussian_psf(size=(15, 15), sigma=5.0):
     """
-    Generate a 2D Gaussian Point Spread Function.
-
-    The Gaussian is defined as:
-    G(x, y) = (1 / (2π σ²)) * exp(-(x² + y²) / (2σ²))
+    Generate a Gaussian point spread function.
 
     Args:
-        size: Size of the kernel (should be odd)
-        sigma: Standard deviation of the Gaussian
+        size: PSF size (height, width)
+        sigma: Standard deviation of Gaussian
 
     Returns:
-        Normalized Gaussian PSF kernel
+        2D Gaussian PSF (normalized)
     """
-    if size % 2 == 0:
-        size += 1  # Ensure odd size
+    # Create coordinate grids
+    h, w = size
+    center_y, center_x = h // 2, w // 2
 
-    # Create coordinate grid centered at 0
-    ax = np.arange(-size // 2 + 1, size // 2 + 1)
-    xx, yy = np.meshgrid(ax, ax)
+    y, x = np.ogrid[:h, :w]
 
-    # Compute Gaussian
-    kernel = np.exp(-(xx**2 + yy**2) / (2.0 * sigma**2))
+    # Gaussian formula
+    psf = np.exp(-((x - center_x)**2 + (y - center_y)**2) / (2 * sigma**2))
 
     # Normalize so sum equals 1
-    kernel = kernel / np.sum(kernel)
+    psf = psf / np.sum(psf)
 
-    return kernel
+    return psf.astype(np.float32)
 

@@ -1,12 +1,6 @@
 numpy>=1.21.0
 opencv-python>=4.5.0
-scipy>=1.7.0
-
-# GPU Acceleration (optional but recommended for speed)
-# Install ONE of these based on your CUDA version:
-# cupy-cuda11x>=11.0.0  # For CUDA 11.x
-# cupy-cuda12x>=12.0.0  # For CUDA 12.x
-
-# For OpenCV with CUDA support (optional, requires compilation):
-# opencv-contrib-python  # May have CUDA if compiled with it
+cupy-cuda12x>=12.0.0  # For CUDA 12.x, adjust based on your CUDA version
+# Alternative for CUDA 11.x: cupy-cuda11x>=11.0.0
+# For CPU-only: comment out cupy line above
 

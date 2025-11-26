@@ -1,58 +1,49 @@
 """
-Wiener deconvolution filter implementation.
+Wiener deconvolution implementation (CPU version).
 """
 import numpy as np
-from utils.fft_tools import fft2_img, ifft2_img, psf_to_otf
+from utils.fft_tools import psf2otf
 
 
-def wiener_deconvolution(img: np.ndarray, psf: np.ndarray, K: float = 0.01) -> np.ndarray:
+def wiener_deconvolution(image, psf, K=0.01):
     """
-    Apply Wiener filtering for image deblurring.
-
-    Wiener filter in frequency domain:
-    F_hat = (H* · G) / (|H|^2 + K)
-
-    where:
-    - F_hat is the estimated original image (frequency domain)
-    - H is the PSF in frequency domain (OTF)
-    - G is the blurred image in frequency domain
-    - K is the noise-to-signal power ratio (regularization parameter)
-    - H* is the complex conjugate of H
+    Wiener deconvolution for image deblurring (CPU version).
 
     Args:
-        img: Blurred input image (grayscale, float)
-        psf: Point Spread Function kernel
-        K: Regularization parameter (noise-to-signal ratio)
+        image: Blurred input image (2D or 3D numpy array, float)
+        psf: Point spread function (2D array)
+        K: Noise-to-signal power ratio (regularization parameter)
 
     Returns:
-        Deblurred image
+        Deblurred image (numpy array, float)
     """
-    # Ensure image is float
-    img = img.astype(np.float64)
+    # Handle color images by processing each channel separately
+    if len(image.shape) == 3:
+        # Color image - process each channel
+        result = np.zeros_like(image)
+        for channel in range(image.shape[2]):
+            result[:, :, channel] = wiener_deconvolution(image[:, :, channel], psf, K)
+        return result
 
-    # Get image dimensions
-    img_shape = img.shape
+    # Grayscale image processing
+    # Convert PSF to OTF
+    otf = psf2otf(psf, image.shape)
 
-    # Convert PSF to OTF (frequency domain)
-    H = psf_to_otf(psf, img_shape)
+    # FFT of blurred image
+    image_fft = np.fft.fft2(image)
 
-    # Compute FFT of blurred image
-    G = fft2_img(img)
+    # Wiener filter
+    otf_conj = np.conj(otf)
+    otf_abs_sq = np.abs(otf) ** 2
 
-    # Wiener filter formula
-    # F_hat = conj(H) * G / (|H|^2 + K)
-    H_conj = np.conj(H)
-    H_mag_sq = np.abs(H) ** 2
+    # H* / (|H|^2 + K)
+    wiener_filter = otf_conj / (otf_abs_sq + K)
 
-    # Apply Wiener filter
-    F_hat = (H_conj * G) / (H_mag_sq + K)
+    # Apply filter in frequency domain
+    result_fft = image_fft * wiener_filter
 
-    # Inverse FFT to get restored image
-    restored = ifft2_img(F_hat)
+    # Inverse FFT
+    result = np.fft.ifft2(result_fft)
 
-    # Ensure real and non-negative
-    restored = np.real(restored)
-    restored = np.maximum(restored, 0)
-
-    return restored
-
+    # Return real part
+    return np.real(result)
