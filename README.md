@@ -2,6 +2,9 @@
 
 GPU-accelerated system for enhancing drone video quality using deconvolution and deblurring methods.
 
+**Based on**: Lecture 11 (Restoration of Blurred Images) from Igor Aizenberg's CMPG 767 - Image Processing and Analysis course  
+[Course Link](https://www.igoraizenberg.com/my-classes/cmpg-767-image-processing-and-analysis)
+
 ## Features
 
 - **GPU Acceleration** - utilizing CuPy for processing on NVIDIA GPUs
@@ -199,7 +202,7 @@ GAUSSIAN_PSF_SIZE = (15, 15)
 GAUSSIAN_PSF_SIGMA = 5.0
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 drone-video-enhancement/
@@ -226,7 +229,7 @@ drone-video-enhancement/
 └── output/                 # Output videos
 ```
 
-## 🔬 Mathematical Background
+## Mathematical Background
 
 All algorithms are based on classical signal processing theory:
 
@@ -260,7 +263,7 @@ Prevents noise amplification:
 - Wiener/Tikhonov add regularization term
 - Balances between deblurring and noise suppression
 
-## 📈 Performance Optimization
+## Performance Optimization
 
 ### GPU Memory
 
@@ -283,7 +286,7 @@ DISPLAY_SCALE = 0.3  # reduce display size
 3. Adjust parameters
 4. Run full processing
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### GPU Not Detected
 
@@ -311,7 +314,7 @@ pip install cupy-cuda11x  # or cupy-cuda12x
 - Enable `SKIP_FRAMES = 2` or more
 - Use `wiener` method instead of `richardson_lucy`
 
-## 📝 Usage Examples
+## Usage Examples
 
 ### Example 1: Fast Processing with Wiener
 
@@ -342,8 +345,7 @@ DISPLAY_COMPARISON = False
 MAX_FRAMES = None  # all frames
 ```
 
-## 📊 Testing
-
+## Testing
 ```bash
 # Test on single image
 python test_image.py
@@ -352,7 +354,7 @@ python test_image.py
 python diagnose_cupy.py
 ```
 
-## 👨‍💻 Author
+## Author
 
 Andrii Vohar - [GitHub](https://github.com/AndriyVohar)
 
