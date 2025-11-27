@@ -51,35 +51,3 @@ fi
 
 echo "✓ Dependencies installed"
 echo ""
-
-# Step 6: Create necessary directories
-echo "Step 6: Creating directories..."
-mkdir -p input output demo_output quickstart_output
-echo "✓ Directories created"
-echo ""
-
-# Step 7: Run quickstart test
-echo "Step 7: Running quickstart test..."
-python quickstart.py
-
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "=========================================="
-    echo "✓ Installation successful!"
-    echo "=========================================="
-    echo ""
-    echo "Next steps:"
-    echo "  1. Place your drone video in: input/drone_video.mp4"
-    echo "  2. Edit config.py to adjust parameters"
-    echo "  3. Run: python main.py"
-    echo ""
-    echo "Or try the demo:"
-    echo "  python demo.py"
-    echo ""
-    echo "Check quickstart_output/ for test results"
-    echo "=========================================="
-else
-    echo "❌ Quickstart test failed. Check for errors above."
-    exit 1
-fi
-

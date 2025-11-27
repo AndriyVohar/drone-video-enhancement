@@ -1,278 +1,372 @@
+# Drone Video Enhancement
+
+GPU-accelerated system for enhancing drone video quality using deconvolution and deblurring methods.
+
+## Features
+
+- **GPU Acceleration** - utilizing CuPy for processing on NVIDIA GPUs
+- **Real-time Display** - view original and processed video side-by-side in real-time
+- **Multiple Deblurring Methods**:
+    - Wiener deconvolution (fast, optimal for Gaussian noise)
+    - Richardson-Lucy (iterative, better for Poisson noise)
+    - Tikhonov regularization
+- **Configurable PSF**:
+    - Motion blur PSF (motion simulation)
+    - Gaussian blur PSF
+- **High Performance** - Full HD video processing in real-time on GPU
+
+## Requirements
+
+### System Requirements
+
+- Python 3.8+
+- NVIDIA GPU with CUDA support (for GPU acceleration)
+- Linux / Windows / macOS
+
+### Dependencies
+
+```bash
+numpy
+fastrlock
+scipy
+opencv-python
+
+opencv-contrib-python # if GPU support is needed
+cupy-cuda11x  # or cupy-cuda12x depending on CUDA version
+```
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/AndriyVohar/drone-video-enhancement.git
+cd drone-video-enhancement
+```
+
+### 2. Install Dependencies
+
+#### Automatic Installation (Linux/macOS)
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+#### Manual Installation
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/macOS
+# or
+venv\Scripts\activate  # Windows
+
+# Install packages
+pip install -r requirements.txt
+
+# Install CuPy (choose appropriate CUDA version)
+pip install cupy-cuda11x  # for CUDA 11.x
+# or
+pip install cupy-cuda12x  # for CUDA 12.x
+```
+
+### 3. Verify GPU
+
+```bash
+python diagnose_cupy.py
+```
+
+## Quick Start
+
+### Basic Usage
+
+```bash
+python main_gpu.py
+```
+
+This will run video processing with default settings and show side-by-side comparison in real-time.
+
+### Configure Parameters
+
+Edit `config.py`:
+
+```python
+# Input/Output video
+INPUT_VIDEO_PATH = "input/your_video.mp4"
+OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
+
+# Deblurring method
+DEBLUR_METHOD = "wiener"  # "wiener", "tikhonov", or "richardson_lucy"
+
+# PSF settings
+PSF_TYPE = "motion"  # "motion" or "gaussian"
+MOTION_LENGTH = 5  # motion blur length in pixels
+MOTION_ANGLE = 0  # motion angle in degrees
+
+# Deblurring parameters
+WIENER_K = 0.03  # Wiener regularization
+RL_ITERATIONS = 10  # Richardson-Lucy iterations
+
+# Display settings
+DISPLAY_REALTIME = True  # show during processing
+DISPLAY_COMPARISON = True  # side-by-side comparison
+DISPLAY_SCALE = 0.5  # display scale (0.5 = 50%)
+```
+
+## Controls
+
+When video is running:
+
+- **`q`** - quit the program
+- **`p`** - pause/resume processing
+
+## Deblurring Methods
+
 ### 1. Wiener Deconvolution
 
-Optimal linear filter in frequency domain:
+**When to use**: Fast processing, Gaussian noise
+
+**Formula**:
 
 ```
 F_hat = (H* · G) / (|H|^2 + K)
 ```
 
-Where:
-- `F_hat`: Estimated original image (frequency domain)
-- `H`: PSF in frequency domain (OTF)
-- `G`: Blurred image (frequency domain)
-- `K`: Noise-to-signal ratio
-- `H*`: Complex conjugate of H
+**Parameters**:
 
-### 2. Tikhonov Regularization
+- `WIENER_K` (0.001 - 0.1): balance between sharpness and noise
+    - Lower value → more sharpness, more noise
+    - Higher value → less noise, less sharpness
 
-Minimizes:
-```
-||Hf - g||^2 + α||Lf||^2
-```
-
-- Zero-order: L is identity (smoothness)
-- First-order: L is gradient operator (edge preservation)
-
-### 3. Richardson-Lucy
-
-Iterative maximum likelihood:
-```
-f^(k+1) = f^(k) · [(g / (h * f^(k))) * h_flipped]
-```
-
-Assumes Poisson noise model.
-
-## 📊 Parameter Tuning Guide
-
-### Denoising Parameters
-
-- **NLM_H**: 10 (default)
-  - Lower (3-7): Preserve more detail, less noise removal
-  - Higher (15-20): Remove more noise, may blur details
-
-### PSF Parameters
-
-- **MOTION_LENGTH**: 15 (pixels of blur)
-  - Measure blur extent in your video
-  - Typical range: 5-30 pixels
-
-- **MOTION_ANGLE**: 45 (degrees)
-  - 0° = horizontal
-  - 90° = vertical
-  - Observe blur direction in your video
-
-### Deblurring Parameters
-
-- **WIENER_K**: 0.01
-  - Lower (0.001): Less regularization, sharper but noisier
-  - Higher (0.1): More regularization, smoother but less sharp
-
-- **TIKHONOV_ALPHA**: 0.01
-  - Similar to Wiener K
-  - Balance between fidelity and smoothness
-
-- **RL_ITERATIONS**: 10
-  - More iterations: Sharper results but risk of over-sharpening
-  - Fewer iterations: Conservative deblurring
-  - Typical range: 5-20
-
-## 🧪 Testing Different Methods
-
-Compare deblurring methods by running with different configurations:
+**Example configuration**:
 
 ```python
-# Edit config.py
-DEBLUR_METHOD = "wiener"     # Fast, good for Gaussian noise
-# or
-DEBLUR_METHOD = "tikhonov"   # Similar to Wiener, adjustable regularization
-# or
-DEBLUR_METHOD = "richardson_lucy"  # Best for Poisson noise, iterative
+DEBLUR_METHOD = "wiener"
+WIENER_K = 0.01  # standard value
 ```
 
-## 🎓 Mathematical Background
+### 2. Richardson-Lucy
 
-All algorithms are based on classical signal processing theory:
+**When to use**: Better quality, Poisson noise, when processing time is available
 
-1. **Convolution Model**: `g = h * f + n`
-   - g: observed blurred image
-   - h: PSF (blur kernel)
-   - f: original sharp image
-   - n: noise
+**Parameters**:
 
-2. **Frequency Domain**: FFT used for efficient convolution
-   - `G = H · F + N` (in frequency domain)
-   - Deconvolution estimates F from G and H
+- `RL_ITERATIONS` (5-20): number of iterations
+    - More iterations → better detail, longer processing
+    - Fewer iterations → faster, but less pronounced effect
 
-3. **Regularization**: Prevents noise amplification
-   - Wiener/Tikhonov add regularization term
-   - Balances deblurring vs noise suppression
+**Example configuration**:
 
-## ⚠️ Important Notes
+```python
+DEBLUR_METHOD = "richardson_lucy"
+RL_ITERATIONS = 10
+```
 
-- **No AI/ML**: This project uses only classical DSP techniques
-- **Grayscale**: Processing is done on grayscale for efficiency (configurable)
-- **Memory**: Large videos may require significant RAM
-- **Speed**: FFT-based methods are faster than spatial methods
+### 3. Tikhonov Regularization
 
-## 🔧 Troubleshooting
+**When to use**: Edge preservation, controlled regularization
 
-### Video not found
-- Check `INPUT_VIDEO_PATH` in config.py
-- Ensure the input directory and video file exist
+**Parameters**:
 
-### Out of memory
-- Process fewer frames at a time
-- Reduce video resolution
-- Use spatial convolution instead of FFT for small PSFs
+- `TIKHONOV_ALPHA` (0.001 - 0.1): regularization parameter
 
-### Results too noisy
-- Increase regularization parameter (WIENER_K, TIKHONOV_ALPHA)
-- Apply stronger denoising (increase NLM_H)
-- Use bilateral or NLM denoising
+## PSF (Point Spread Function)
 
-### Results too blurry
-- Decrease regularization parameter
-- Reduce denoising strength
-- Check PSF parameters (length, angle)
-- Try Richardson-Lucy with fewer iterations
+### Motion Blur PSF
 
-## 📚 References
+Used for videos with motion blur from camera or object movement.
 
-- Wiener Filter: Classical optimal linear filter theory
-- Tikhonov Regularization: Inverse problem regularization
-- Richardson-Lucy: Maximum likelihood estimation (1972, 1974)
-- Non-Local Means: Buades et al. (2005)
+```python
+PSF_TYPE = "motion"
+MOTION_LENGTH = 3  # blur length in pixels (1-30)
+MOTION_ANGLE = 0  # blur direction in degrees (0-360)
+```
 
-## 📝 License
+**How to determine parameters**:
 
-This project implements classical algorithms from signal processing literature.
+1. Open a frame from the video
+2. Measure blur length on a high-contrast object
+3. Determine blur direction (0° = horizontal, 90° = vertical)
 
----
+### Gaussian Blur PSF
 
-**Built with classical signal processing - No neural networks, No AI models, Just mathematics! 📐**
-# 🎥 Drone Video Enhancement - Classical Image Processing
+Used for defocus blur.
 
-A video deblurring and enhancement system using **only classical image processing techniques**. No AI, deep learning, or neural networks - just pure signal processing theory!
-
-## 🎯 Features
-
-- **Classical Deblurring Algorithms**:
-  - Wiener Deconvolution (frequency domain)
-  - Tikhonov Regularization (zero-order and gradient-based)
-  - Richardson-Lucy Deconvolution (iterative)
-
-- **PSF Modeling**:
-  - Motion blur PSF (linear motion)
-  - Gaussian blur PSF
-  - Automatic PSF estimation from spectral analysis
-
-- **Preprocessing**:
-  - Video stabilization using optical flow
-  - Multiple denoising methods (Gaussian, Bilateral, Non-Local Means)
-  - CLAHE contrast enhancement
-
-- **100% Deterministic**: No machine learning, no pretrained models, completely reproducible
+```python
+PSF_TYPE = "gaussian"
+GAUSSIAN_PSF_SIZE = (15, 15)
+GAUSSIAN_PSF_SIGMA = 5.0
+```
 
 ## 📁 Project Structure
 
 ```
-project/
-├── main.py                      # Main pipeline
-├── config.py                    # Configuration parameters
-├── requirements.txt             # Python dependencies
-├── utils/                       # Utility modules
-│   ├── fft_tools.py            # FFT operations
-│   ├── video_io.py             # Video I/O
-│   └── image_ops.py            # Image utilities
-├── psf/                        # Point Spread Functions
-│   ├── gaussian_psf.py         # Gaussian PSF
-│   ├── motion_psf.py           # Motion blur PSF
-│   └── estimate_psf.py         # PSF estimation
-├── deblurring/                 # Deblurring algorithms
-│   ├── wiener.py               # Wiener filter
-│   ├── tikhonov.py             # Tikhonov regularization
-│   └── richardson_lucy.py      # Richardson-Lucy
-└── preprocessing/              # Preprocessing
-    ├── denoise.py              # Denoising methods
-    └── stabilization.py        # Video stabilization
+drone-video-enhancement/
+├── main_gpu.py              # Main script with GPU acceleration
+├── config.py                # Configuration file
+├── requirements.txt         # Python dependencies
+├── diagnose_cupy.py        # GPU diagnostics
+│
+├── deblurring/             # Deblurring algorithms
+│   ├── wiener_gpu.py       # Wiener deconvolution (GPU)
+│   ├── richardson_lucy_gpu.py  # Richardson-Lucy (GPU)
+│   └── tikhonov.py         # Tikhonov regularization
+│
+├── psf/                    # PSF generation
+│   ├── motion_psf.py       # Motion blur PSF
+│   └── gaussian_psf.py     # Gaussian blur PSF
+│
+├── utils/                  # Utilities
+│   ├── gpu_utils.py        # GPU helper functions
+│   ├── fft_tools_gpu.py    # FFT operations on GPU
+│   └── video_io.py         # Video I/O
+│
+├── input/                  # Input videos
+└── output/                 # Output videos
 ```
 
-## 🚀 Installation
+## 🔬 Mathematical Background
 
-1. **Clone or navigate to the project directory**:
-```bash
-cd /home/thinkpad/Documents/drone-video-enhancement
+All algorithms are based on classical signal processing theory:
+
+### Convolution Model
+
+```
+g = h * f + n
 ```
 
-2. **Install dependencies**:
-```bash
-pip install -r requirements.txt
+where:
+
+- `g` - observed (blurred) image
+- `h` - PSF (blur kernel)
+- `f` - original (sharp) image
+- `n` - noise
+
+### Frequency Domain
+
+FFT is used for efficient convolution:
+
+```
+G = H · F + N  (in frequency domain)
 ```
 
-Or if using the virtual environment:
-```bash
-source .venv/bin/activate  # Activate your venv
-pip install -r requirements.txt
-```
+Deconvolution estimates `F` from `G` and `H`.
 
-## ⚙️ Configuration
+### Regularization
 
-Edit `config.py` to customize processing parameters:
+Prevents noise amplification:
+
+- Wiener/Tikhonov add regularization term
+- Balances between deblurring and noise suppression
+
+## 📈 Performance Optimization
+
+### GPU Memory
+
+If out of memory error occurs:
 
 ```python
-# Video paths
-INPUT_VIDEO_PATH = "input/drone_video.mp4"
-OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
-
-# Denoising
-DENOISE_METHOD = "nlm"  # "gaussian", "bilateral", "nlm"
-
-# PSF type
-PSF_TYPE = "motion"  # "motion", "gaussian", "estimate"
-MOTION_LENGTH = 15
-MOTION_ANGLE = 45
-
-# Deblurring algorithm
-DEBLUR_METHOD = "wiener"  # "wiener", "tikhonov", "richardson_lucy"
-WIENER_K = 0.01  # Regularization parameter
-
-# Enhancement
-APPLY_CLAHE = True
-ENABLE_STABILIZATION = True
+SKIP_FRAMES = 2  # process every 2nd frame
+DISPLAY_SCALE = 0.3  # reduce display size
 ```
 
-## 🎬 Usage
+### Processing Speed
 
-### Basic Usage
+- **Wiener**: ~30-50 FPS (Full HD, RTX 3050)
+- **Richardson-Lucy**: ~5-15 FPS (depends on iterations)
 
-1. **Prepare your video**:
-   - Create an `input/` directory
-   - Place your drone video as `input/drone_video.mp4`
-   - Or update `INPUT_VIDEO_PATH` in `config.py`
+### Recommendations
 
-2. **Run the pipeline**:
+1. Start with `WIENER_K = 0.03` and `wiener` method
+2. Process a few frames for testing
+3. Adjust parameters
+4. Run full processing
+
+## 🐛 Troubleshooting
+
+### GPU Not Detected
+
 ```bash
-python main.py
+# Check CUDA
+nvidia-smi
+
+# Check CuPy
+python -c "import cupy as cp; print(cp.cuda.runtime.getDeviceCount())"
+
+# Reinstall CuPy with correct CUDA version
+pip uninstall cupy
+pip install cupy-cuda11x  # or cupy-cuda12x
 ```
 
-3. **Output**:
-   - Enhanced video will be saved to `output/enhanced_video.mp4`
+### Video Won't Open
 
-### Processing Single Frames
+- Check path in `INPUT_VIDEO_PATH`
+- Ensure format is supported (mp4, avi, mov)
+- Try converting video to mp4
 
-You can also process individual frames programmatically:
+### Slow Processing
+
+- Reduce `RL_ITERATIONS` (if using Richardson-Lucy)
+- Enable `SKIP_FRAMES = 2` or more
+- Use `wiener` method instead of `richardson_lucy`
+
+## 📝 Usage Examples
+
+### Example 1: Fast Processing with Wiener
 
 ```python
-import cv2
-from main import process_single_frame
-
-# Read frame
-frame = cv2.imread("blurred_frame.jpg")
-
-# Process
-enhanced = process_single_frame(
-    frame, 
-    psf_type="motion",
-    deblur_method="wiener"
-)
-
-# Save
-cv2.imwrite("enhanced_frame.jpg", enhanced)
+# config.py
+DEBLUR_METHOD = "wiener"
+WIENER_K = 0.01
+SKIP_FRAMES = 1
+DISPLAY_COMPARISON = True
 ```
 
-## 🔬 Algorithms Explained
+### Example 2: High Quality with Richardson-Lucy
 
-numpy>=1.21.0
-opencv-python>=4.5.0
-scipy>=1.7.0
+```python
+# config.py
+DEBLUR_METHOD = "richardson_lucy"
+RL_ITERATIONS = 15
+SKIP_FRAMES = 1
+DISPLAY_COMPARISON = True
+```
 
+### Example 3: Batch Processing without Display
+
+```python
+# config.py
+DISPLAY_REALTIME = False
+DISPLAY_COMPARISON = False
+MAX_FRAMES = None  # all frames
+```
+
+## 📊 Testing
+
+```bash
+# Test on single image
+python test_image.py
+
+# GPU diagnostics
+python diagnose_cupy.py
+```
+
+## 👨‍💻 Author
+
+Andrii Vohar - [GitHub](https://github.com/AndriyVohar)
+
+---
+
+**Note**: For best results, NVIDIA GPU with at least 4GB VRAM and CUDA 11.0+ is recommended.
+
+---
+
+## Support Ukraine
+
+Ukraine is currently defending itself against russian aggression. Thousands of civilians have been killed, millions
+displaced, and critical infrastructure has been destroyed. Despite these challenges, Ukraine continues to fight for its
+freedom and sovereignty. If you find this project useful, consider supporting Ukraine in its fight for freedom.
+
+- **Donate**: Consider supporting humanitarian organizations like the [Red Cross Ukraine Crisis Appeal](https://redcross.org.ua/en/donate/), [United24](https://u24.gov.ua/), or [Come Back Alive](https://savelife.in.ua/en/donate-en/)
+- **Stay Informed**: Follow reliable news sources about the situation
