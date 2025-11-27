@@ -27,13 +27,13 @@ quickstart_output/
 Thumbs.db
 
 # Video files (can be large)
-*.mp4
+#*.mp4
 *.avi
 *.mov
 *.mkv
 
 # Test outputs
 *.png
-*.jpg
+#*.jpg
 *.jpeg
 !README_assets/
