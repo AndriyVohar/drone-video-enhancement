@@ -10,7 +10,7 @@ USE_GPU = True  # Set to False to use CPU only
 # ========================================
 # INPUT/OUTPUT
 # ========================================
-INPUT_VIDEO_PATH = "input/856478-uhd_4096_2160_25fps.mp4"
+INPUT_VIDEO_PATH = "input/YTDown.com_YouTube_Media_NZbggSYTLR4_001_1080p.mp4"
 OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
 
 # ========================================
