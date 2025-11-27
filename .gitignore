@@ -16,11 +16,20 @@ ENV/
 *.swo
 *~
 
-# Output directories
-#output/
+# Output directories - keep structure but ignore large files
+#output/*.mp4
+output/*.avi
+output/*.mov
+output/*.mkv
+output/enhanced_video.mp4
 demo_output/
 quickstart_output/
-#input/
+
+# Input videos - too large for git
+#input/*.mp4
+input/*.avi
+input/*.mov
+input/*.mkv
 
 # OS files
 .DS_Store
@@ -34,6 +43,6 @@ Thumbs.db
 
 # Test outputs
 *.png
-#*.jpg
-*.jpeg
 !README_assets/
+
+# Keep jpg files for comparison
