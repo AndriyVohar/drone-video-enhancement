@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 
 import config
-from utils.video_io import iterate_frames, save_video, get_video_info
-from utils.image_ops import to_gray, to_float, from_float
+from utils.video_io import iterate_frames, get_video_info, VideoWriter
+from utils.image_ops import to_float, from_float
 from preprocessing.denoise import denoise_gaussian, denoise_bilateral, denoise_nlm
 from psf.gaussian_psf import gaussian_psf
 from psf.motion_psf import motion_psf
@@ -112,6 +112,7 @@ def apply_sharpening(frame: np.ndarray, amount: float = 0.5) -> np.ndarray:
 def process_video_simple(input_path: str, output_path: str, use_gpu: bool = None) -> None:
     """
     Video processing with automatic GPU/CPU selection.
+    Memory-efficient streaming implementation.
     """
     # Determine GPU usage
     if use_gpu is None:
@@ -154,6 +155,7 @@ def process_video_simple(input_path: str, output_path: str, use_gpu: bool = None
         print()
     print(f"  CLAHE contrast: {'ON ✓' if config.APPLY_CLAHE else 'OFF'}")
     print(f"  PSF: {config.PSF_TYPE} (len={config.MOTION_LENGTH}, angle={config.MOTION_ANGLE}°)")
+    print(f"  Memory-efficient streaming: ✓ ENABLED")
     print()
 
     # Create output directory
@@ -169,65 +171,86 @@ def process_video_simple(input_path: str, output_path: str, use_gpu: bool = None
     print()
     print("Processing frames...")
 
-    # Process frames
-    processed_frames = []
+    # Initialize variables
     frame_count = 0
+    video_writer = None
 
-    for frame_num, frame in iterate_frames(input_path):
-        print(f"Frame {frame_num + 1}/{video_info['frame_count']} - ", end='')
+    try:
+        for frame_num, frame in iterate_frames(input_path):
+            print(f"Frame {frame_num + 1}/{video_info['frame_count']} - ", end='')
 
-        # Keep color
-        frame_work = frame
+            # Keep color
+            frame_work = frame
 
-        # Step 1: Denoising
-        print("denoise", end='')
-        frame_denoised = apply_denoising(frame_work, config.DENOISE_METHOD)
+            # Step 1: Denoising
+            print("denoise", end='')
+            frame_denoised = apply_denoising(frame_work, config.DENOISE_METHOD)
 
-        # Step 2: Deblurring (per channel for color) WITH GPU SUPPORT
-        print("→deblur", end='')
-        if use_gpu:
-            print("(GPU)", end='')
+            # Step 2: Deblurring (per channel for color) WITH GPU SUPPORT
+            print("→deblur", end='')
+            if use_gpu:
+                print("(GPU)", end='')
 
-        if len(frame_denoised.shape) == 3:
-            # Color image - process each channel
-            channels = cv2.split(frame_denoised)
-            deblurred_channels = []
-            for ch in channels:
-                ch_float = to_float(ch)
-                ch_deblurred = apply_deblurring(ch_float, psf, config.DEBLUR_METHOD, use_gpu=use_gpu)
-                ch_restored = from_float(ch_deblurred)
-                deblurred_channels.append(ch_restored)
-            frame_restored = cv2.merge(deblurred_channels)
-        else:
-            # Grayscale
-            frame_float = to_float(frame_denoised)
-            frame_deblurred = apply_deblurring(frame_float, psf, config.DEBLUR_METHOD, use_gpu=use_gpu)
-            frame_restored = from_float(frame_deblurred)
+            if len(frame_denoised.shape) == 3:
+                # Color image - process each channel
+                channels = cv2.split(frame_denoised)
+                deblurred_channels = []
+                for ch in channels:
+                    ch_float = to_float(ch)
+                    ch_deblurred = apply_deblurring(ch_float, psf, config.DEBLUR_METHOD, use_gpu=use_gpu)
+                    ch_restored = from_float(ch_deblurred)
+                    deblurred_channels.append(ch_restored)
+                frame_restored = cv2.merge(deblurred_channels)
+            else:
+                # Grayscale
+                frame_float = to_float(frame_denoised)
+                frame_deblurred = apply_deblurring(frame_float, psf, config.DEBLUR_METHOD, use_gpu=use_gpu)
+                frame_restored = from_float(frame_deblurred)
 
-        # Step 3: CLAHE contrast enhancement
-        if config.APPLY_CLAHE:
-            print("→clahe", end='')
-            frame_enhanced = apply_clahe(frame_restored)
-        else:
-            frame_enhanced = frame_restored
+            # Step 3: CLAHE contrast enhancement
+            if config.APPLY_CLAHE:
+                print("→clahe", end='')
+                frame_enhanced = apply_clahe(frame_restored)
+            else:
+                frame_enhanced = frame_restored
 
-        # Step 4: Optional light sharpening
-        if hasattr(config, 'APPLY_SHARPENING') and config.APPLY_SHARPENING:
-            print("→sharp", end='')
-            frame_enhanced = apply_sharpening(frame_enhanced, amount=0.3)
+            # Step 4: Optional light sharpening
+            if hasattr(config, 'APPLY_SHARPENING') and config.APPLY_SHARPENING:
+                print("→sharp", end='')
+                frame_enhanced = apply_sharpening(frame_enhanced, amount=0.3)
 
-        print(" ✓")
-        
-        # Store frame
-        processed_frames.append(frame_enhanced)
-        frame_count += 1
+            print(" ✓")
 
-    print()
-    print(f"Processed {frame_count} frames")
-    print(f"\nSaving video to: {output_path}")
+            # Initialize video writer on first frame
+            if video_writer is None:
+                height, width = frame_enhanced.shape[:2]
+                is_color = len(frame_enhanced.shape) == 3
+                video_writer = VideoWriter(
+                    output_path,
+                    video_info['fps'],
+                    (width, height),
+                    is_color
+                )
 
-    # Save processed video
-    save_video(processed_frames, output_path, video_info['fps'])
+            # Write frame immediately (no buffering!)
+            video_writer.write_frame(frame_enhanced)
+
+            # Clean up intermediate arrays
+            del frame_denoised, frame_restored
+            if len(frame_work.shape) == 3:
+                del deblurred_channels
+            else:
+                del frame_float, frame_deblurred
+
+            frame_count += 1
+
+        print()
+        print(f"Processed {frame_count} frames")
+
+    finally:
+        if video_writer is not None:
+            video_writer.release()
+            print(f"\nVideo saved to: {output_path}")
 
     print("\n" + "=" * 60)
     print("✓ Processing complete!")

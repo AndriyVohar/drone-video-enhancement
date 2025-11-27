@@ -15,7 +15,7 @@ import numpy as np
 from typing import Optional
 
 import config
-from utils.video_io import iterate_frames, save_video, get_video_info
+from utils.video_io import iterate_frames, get_video_info, VideoWriter
 from utils.image_ops import to_gray, to_float, from_float
 from preprocessing.denoise import denoise_gaussian, denoise_bilateral, denoise_nlm
 from preprocessing.stabilization import stabilize_frame
@@ -125,7 +125,8 @@ def apply_clahe(frame: np.ndarray) -> np.ndarray:
 def process_video(input_path: str, output_path: str) -> None:
     """
     Process video with deblurring and enhancement pipeline.
-    
+    Memory-efficient streaming implementation.
+
     Pipeline:
     1. Read frame
     2. Convert to grayscale (if configured)
@@ -162,65 +163,84 @@ def process_video(input_path: str, output_path: str) -> None:
     print(f"  PSF type: {config.PSF_TYPE}")
     print(f"  Deblur method: {config.DEBLUR_METHOD}")
     print(f"  CLAHE: {config.APPLY_CLAHE}")
+    print(f"  Memory-efficient streaming: ✓ ENABLED")
     print()
     
     # Create output directory if needed
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
     
-    # Process frames
-    processed_frames = []
+    # Initialize variables
     prev_frame = None
     psf = None
-    
-    for frame_num, frame in iterate_frames(input_path):
-        print(f"Processing frame {frame_num + 1}/{video_info['frame_count']}...", end='\r')
-        
-        # Convert to grayscale if configured
-        if config.CONVERT_TO_GRAYSCALE:
-            frame_gray = to_gray(frame)
-        else:
-            frame_gray = frame
-        
-        # Stabilization
-        if config.ENABLE_STABILIZATION and prev_frame is not None:
-            frame_stabilized = stabilize_frame(prev_frame, frame_gray)
-        else:
-            frame_stabilized = frame_gray
-        
-        # Denoising
-        frame_denoised = apply_denoising(frame_stabilized, config.DENOISE_METHOD)
-        
-        # Convert to float for deblurring
-        frame_float = to_float(frame_denoised)
-        
-        # Get PSF (generate once or estimate per frame)
-        if psf is None or config.PSF_TYPE == "estimate":
-            psf = get_psf(frame_float)
-        
-        # Deblurring
-        frame_deblurred = apply_deblurring(frame_float, psf, config.DEBLUR_METHOD)
-        
-        # Convert back to uint8
-        frame_restored = from_float(frame_deblurred)
-        
-        # CLAHE enhancement
-        if config.APPLY_CLAHE:
-            frame_enhanced = apply_clahe(frame_restored)
-        else:
-            frame_enhanced = frame_restored
-        
-        # Store frame
-        processed_frames.append(frame_enhanced)
-        
-        # Update previous frame for stabilization
-        prev_frame = frame_gray.copy()
-    
-    print()
-    print(f"\nSaving video to: {output_path}")
-    
-    # Save processed video
-    save_video(processed_frames, output_path, video_info['fps'])
-    
+    video_writer = None
+
+    try:
+        for frame_num, frame in iterate_frames(input_path):
+            print(f"Processing frame {frame_num + 1}/{video_info['frame_count']}...", end='\r')
+
+            # Convert to grayscale if configured
+            if config.CONVERT_TO_GRAYSCALE:
+                frame_gray = to_gray(frame)
+            else:
+                frame_gray = frame
+
+            # Stabilization
+            if config.ENABLE_STABILIZATION and prev_frame is not None:
+                frame_stabilized = stabilize_frame(prev_frame, frame_gray)
+            else:
+                frame_stabilized = frame_gray
+
+            # Denoising
+            frame_denoised = apply_denoising(frame_stabilized, config.DENOISE_METHOD)
+
+            # Convert to float for deblurring
+            frame_float = to_float(frame_denoised)
+
+            # Get PSF (generate once or estimate per frame)
+            if psf is None or config.PSF_TYPE == "estimate":
+                psf = get_psf(frame_float)
+
+            # Deblurring
+            frame_deblurred = apply_deblurring(frame_float, psf, config.DEBLUR_METHOD)
+
+            # Convert back to uint8
+            frame_restored = from_float(frame_deblurred)
+
+            # CLAHE enhancement
+            if config.APPLY_CLAHE:
+                frame_enhanced = apply_clahe(frame_restored)
+            else:
+                frame_enhanced = frame_restored
+
+            # Initialize video writer on first frame
+            if video_writer is None:
+                height, width = frame_enhanced.shape[:2]
+                is_color = len(frame_enhanced.shape) == 3
+                video_writer = VideoWriter(
+                    output_path,
+                    video_info['fps'],
+                    (width, height),
+                    is_color
+                )
+
+            # Write frame immediately (no buffering!)
+            video_writer.write_frame(frame_enhanced)
+
+            # Update previous frame for stabilization (minimal memory)
+            if config.ENABLE_STABILIZATION:
+                prev_frame = frame_gray.copy()
+
+            # Clean up intermediate arrays
+            del frame_denoised, frame_float, frame_deblurred, frame_restored
+
+        print()
+        print(f"\nProcessed {video_info['frame_count']} frames")
+
+    finally:
+        if video_writer is not None:
+            video_writer.release()
+            print(f"Video saved to: {output_path}")
+
     print("Processing complete!")
     print("=" * 60)
 

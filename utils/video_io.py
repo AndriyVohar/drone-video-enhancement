@@ -88,3 +88,52 @@ def save_video(frames, output_path, fps):
 
     out.release()
 
+
+class VideoWriter:
+    """
+    Streaming video writer for memory-efficient processing.
+    Writes frames immediately without storing in memory.
+    """
+    def __init__(self, output_path: str, fps: float, frame_size: tuple, is_color: bool = True):
+        """
+        Initialize video writer.
+
+        Args:
+            output_path: Output video path
+            fps: Frames per second
+            frame_size: (width, height) tuple
+            is_color: Whether frames are in color
+        """
+        self.output_path = output_path
+        self.fps = fps
+        self.frame_size = frame_size
+        self.is_color = is_color
+
+        # Create video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self.writer = cv2.VideoWriter(output_path, fourcc, fps, frame_size, is_color)
+
+        if not self.writer.isOpened():
+            raise ValueError(f"Failed to open video writer for: {output_path}")
+
+        self.frame_count = 0
+
+    def write_frame(self, frame: np.ndarray):
+        """Write a single frame to video."""
+        self.writer.write(frame)
+        self.frame_count += 1
+
+    def release(self):
+        """Release video writer."""
+        if self.writer is not None:
+            self.writer.release()
+            self.writer = None
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.release()
+        return False
