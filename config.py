@@ -10,7 +10,7 @@ USE_GPU = True  # Set to False to use CPU only
 # ========================================
 # INPUT/OUTPUT
 # ========================================
-INPUT_VIDEO_PATH = "input/drone_auto.mp4"
+INPUT_VIDEO_PATH = "input/YTDown.com_YouTube_Media_GHCPvJU_wFY_001_1080p.mp4"
 OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
 
 # ========================================
@@ -19,7 +19,7 @@ OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
 CONVERT_TO_GRAYSCALE = False  # Keep color by default
 
 # Denoising method: "none", "gaussian", "bilateral", "nlm"
-DENOISE_METHOD = "bilateral"
+DENOISE_METHOD = "none"
 
 # Gaussian denoising parameters
 GAUSSIAN_SIGMA = 1.5
@@ -42,8 +42,8 @@ PSF_TYPE = "motion"
 PSF_SIZE = (15, 15)
 
 # Motion blur PSF parameters
-MOTION_LENGTH = 15
-MOTION_ANGLE = 45
+MOTION_LENGTH = 1.5
+MOTION_ANGLE = 0
 
 # Gaussian PSF parameters
 GAUSSIAN_PSF_SIZE = (15, 15)
@@ -56,7 +56,7 @@ GAUSSIAN_PSF_SIGMA = 5.0
 DEBLUR_METHOD = "wiener"
 
 # Wiener filter parameter (noise-to-signal ratio)
-WIENER_K = 0.01
+WIENER_K = 0.03
 
 # Tikhonov regularization parameter
 TIKHONOV_ALPHA = 0.01
@@ -68,12 +68,12 @@ RL_ITERATIONS = 10
 # POST-PROCESSING
 # ========================================
 # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-APPLY_CLAHE = True
+APPLY_CLAHE = False
 CLAHE_CLIP_LIMIT = 2.0
 CLAHE_TILE_GRID_SIZE = (8, 8)
 
 # Apply additional sharpening
-APPLY_SHARPENING = True
+APPLY_SHARPENING = False
 SHARPENING_AMOUNT = 0.3
 
 ENABLE_STABILIZATION = False

@@ -17,10 +17,10 @@ ENV/
 *~
 
 # Output directories
-output/
+#output/
 demo_output/
 quickstart_output/
-input/
+#input/
 
 # OS files
 .DS_Store
