@@ -1,11 +1,35 @@
 """
-GPU-accelerated FFT utility functions using CuPy.
+GPU-accelerated FFT tools using CuPy
 """
 import numpy as np
-from .gpu_utils import GPU_AVAILABLE
+from utils.gpu_utils import get_array_module, is_gpu_available
 
-if GPU_AVAILABLE:
+if is_gpu_available():
     import cupy as cp
+
+
+def fft2_gpu(image):
+    """2D FFT on GPU"""
+    xp = get_array_module(image)
+    return xp.fft.fft2(image)
+
+
+def ifft2_gpu(spectrum):
+    """2D inverse FFT on GPU"""
+    xp = get_array_module(spectrum)
+    return xp.fft.ifft2(spectrum)
+
+
+def fftshift_gpu(array):
+    """Shift zero-frequency component to center"""
+    xp = get_array_module(array)
+    return xp.fft.fftshift(array)
+
+
+def ifftshift_gpu(array):
+    """Inverse FFT shift"""
+    xp = get_array_module(array)
+    return xp.fft.ifftshift(array)
 
 
 def psf2otf_gpu(psf, output_shape):
@@ -19,7 +43,7 @@ def psf2otf_gpu(psf, output_shape):
     Returns:
         Optical transfer function in frequency domain (CuPy array)
     """
-    if not GPU_AVAILABLE:
+    if not is_gpu_available():
         raise RuntimeError("GPU not available")
 
     # Ensure PSF is normalized
@@ -53,7 +77,7 @@ def convolve_fft_gpu(image, kernel):
     Returns:
         Convolved image (CuPy array)
     """
-    if not GPU_AVAILABLE:
+    if not is_gpu_available():
         raise RuntimeError("GPU not available")
 
     # Get OTF
@@ -70,4 +94,3 @@ def convolve_fft_gpu(image, kernel):
 
     # Return real part
     return cp.real(result)
-

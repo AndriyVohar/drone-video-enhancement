@@ -1,48 +1,49 @@
 """
-Motion blur PSF (Point Spread Function) generation.
+Motion blur PSF generation
 """
 import numpy as np
-import cv2
 
 
-def motion_psf(length, angle, size=(15, 15)):
+def create_motion_psf(length, angle, size=None):
     """
-    Generate a motion blur point spread function.
+    Create motion blur point spread function (PSF).
 
     Args:
         length: Length of motion blur in pixels
         angle: Angle of motion in degrees
-        size: PSF size (height, width)
+        size: Size of PSF kernel (height, width). If None, auto-calculated
 
     Returns:
-        2D motion blur PSF (normalized)
+        Motion blur PSF (normalized 2D array)
     """
-    # Create PSF
-    psf = np.zeros(size, dtype=np.float32)
+    if size is None:
+        size = (max(15, int(length) + 4), max(15, int(length) + 4))
 
-    # Center of PSF
-    center_y, center_x = size[0] // 2, size[1] // 2
+    psf = np.zeros(size)
+    center = (size[0] // 2, size[1] // 2)
 
     # Convert angle to radians
     angle_rad = np.deg2rad(angle)
 
-    # Calculate line endpoints
+    # Calculate motion trajectory
     cos_angle = np.cos(angle_rad)
     sin_angle = np.sin(angle_rad)
 
     # Draw line representing motion
-    half_length = length / 2.0
+    for i in range(int(length)):
+        offset = i - length / 2
+        y = int(center[0] + offset * sin_angle)
+        x = int(center[1] + offset * cos_angle)
 
-    x1 = int(center_x - half_length * cos_angle)
-    y1 = int(center_y - half_length * sin_angle)
-    x2 = int(center_x + half_length * cos_angle)
-    y2 = int(center_y + half_length * sin_angle)
+        if 0 <= y < size[0] and 0 <= x < size[1]:
+            psf[y, x] = 1
 
-    # Draw the line
-    cv2.line(psf, (x1, y1), (x2, y2), 1.0, 1)
-
-    # Normalize so sum equals 1
-    psf = psf / np.sum(psf)
+    # Normalize
+    psf_sum = np.sum(psf)
+    if psf_sum > 0:
+        psf /= psf_sum
+    else:
+        # Fallback: single pixel at center
+        psf[center] = 1.0
 
     return psf
-

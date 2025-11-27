@@ -1,257 +1,266 @@
 """
-Main video deblurring with GPU acceleration support.
-
-GPU-accelerated classical image processing - NO AI/ML!
+GPU-accelerated drone video enhancement with real-time side-by-side display
 """
-import os
 import cv2
 import numpy as np
-from typing import Optional
+import time
+from pathlib import Path
 
+# Import configuration
 import config
-from utils.video_io import iterate_frames, get_video_info, VideoWriter
-from utils.image_ops import to_gray, to_float, from_float
-from preprocessing.denoise import denoise_gaussian, denoise_bilateral, denoise_nlm
-from preprocessing.stabilization import stabilize_frame
+
+# Import GPU utilities
+from utils.gpu_utils import is_gpu_available, to_gpu, to_cpu
+
+# Import PSF generators
+from psf.motion_psf import create_motion_psf
 from psf.gaussian_psf import gaussian_psf
-from psf.motion_psf import motion_psf
-from psf.estimate_psf import estimate_psf_auto
 
-# Try to import GPU versions
+# Import deblurring methods
+from deblurring.wiener_gpu import wiener_deconvolution_gpu
+from deblurring.richardson_lucy_gpu import richardson_lucy_gpu
+
 try:
-    from utils.gpu_utils import GPU_AVAILABLE, get_device_info
-    from deblurring.wiener_gpu import wiener_deconvolution_gpu
-    from deblurring.richardson_lucy_gpu import richardson_lucy_fft_gpu
-    GPU_SUPPORT = True
+    import cupy as cp
+    GPU_AVAILABLE = True
 except ImportError:
-    GPU_SUPPORT = False
     GPU_AVAILABLE = False
-    print("⚠ GPU modules not available, using CPU only")
-
-# Fallback to CPU versions
-from deblurring.wiener import wiener_deconvolution
-from deblurring.tikhonov import tikhonov_deconvolution, tikhonov_gradient
-from deblurring.richardson_lucy import richardson_lucy_fft
+    print("Warning: CuPy not available. GPU acceleration disabled.")
 
 
-def apply_denoising(frame: np.ndarray, method: str) -> np.ndarray:
-    """Apply denoising to frame based on selected method."""
-    if method == "gaussian":
-        return denoise_gaussian(frame, config.GAUSSIAN_SIGMA)
-    elif method == "bilateral":
-        return denoise_bilateral(frame, config.BILATERAL_D,
-                                config.BILATERAL_SIGMA_COLOR,
-                                config.BILATERAL_SIGMA_SPACE)
-    elif method == "nlm":
-        return denoise_nlm(frame, config.NLM_H,
-                          config.NLM_PATCH_SIZE,
-                          config.NLM_SEARCH_SIZE)
-    else:
-        return frame
-
-
-def get_psf(frame: Optional[np.ndarray] = None) -> np.ndarray:
-    """Generate or estimate PSF based on configuration."""
-    if config.PSF_TYPE == "motion":
-        return motion_psf(config.MOTION_LENGTH, config.MOTION_ANGLE, config.PSF_SIZE)
-    elif config.PSF_TYPE == "gaussian":
-        return gaussian_psf(config.GAUSSIAN_PSF_SIZE, config.GAUSSIAN_PSF_SIGMA)
-    elif config.PSF_TYPE == "estimate" and frame is not None:
-        return estimate_psf_auto(frame, "motion")
-    else:
-        return motion_psf(15, 45, 31)
-
-
-def apply_deblurring(frame: np.ndarray, psf: np.ndarray, method: str,
-                     use_gpu: bool = False) -> np.ndarray:
+def process_frame_gpu(frame, psf_gpu, method='wiener'):
     """
-    Apply deblurring with GPU acceleration if available.
+    Process a single frame using GPU acceleration.
 
     Args:
-        frame: Blurred frame (float, grayscale)
-        psf: Point Spread Function
-        method: Deblurring method name
-        use_gpu: Whether to use GPU acceleration
+        frame: Input frame (numpy array, BGR)
+        psf_gpu: Point spread function on GPU (CuPy array)
+        method: Deblurring method ('wiener' or 'richardson_lucy')
 
     Returns:
-        Deblurred frame
+        Processed frame (numpy array, BGR)
     """
-    # GPU-accelerated methods
-    if use_gpu and GPU_AVAILABLE and GPU_SUPPORT:
-        if method == "wiener":
-            return wiener_deconvolution_gpu(frame, psf, config.WIENER_K, use_gpu=True)
-        elif method == "richardson_lucy":
-            return richardson_lucy_fft_gpu(frame, psf, config.RL_ITERATIONS, use_gpu=True)
+    # Convert to float32
+    frame_float = frame.astype(np.float32)
 
-    # CPU fallback or non-GPU methods
-    if method == "wiener":
-        return wiener_deconvolution(frame, psf, config.WIENER_K)
-    elif method == "tikhonov":
-        return tikhonov_deconvolution(frame, psf, config.TIKHONOV_ALPHA)
-    elif method == "tikhonov_gradient":
-        return tikhonov_gradient(frame, psf, config.TIKHONOV_ALPHA)
-    elif method == "richardson_lucy":
-        return richardson_lucy_fft(frame, psf, config.RL_ITERATIONS)
+    # Split channels
+    b, g, r = cv2.split(frame_float)
+
+    # Transfer to GPU
+    b_gpu = to_gpu(b)
+    g_gpu = to_gpu(g)
+    r_gpu = to_gpu(r)
+
+    # Process each channel
+    if method == 'wiener':
+        b_proc = wiener_deconvolution_gpu(b_gpu, psf_gpu, K=config.WIENER_K)
+        g_proc = wiener_deconvolution_gpu(g_gpu, psf_gpu, K=config.WIENER_K)
+        r_proc = wiener_deconvolution_gpu(r_gpu, psf_gpu, K=config.WIENER_K)
+    elif method == 'richardson_lucy':
+        b_proc = richardson_lucy_gpu(b_gpu, psf_gpu, iterations=config.RL_ITERATIONS)
+        g_proc = richardson_lucy_gpu(g_gpu, psf_gpu, iterations=config.RL_ITERATIONS)
+        r_proc = richardson_lucy_gpu(r_gpu, psf_gpu, iterations=config.RL_ITERATIONS)
     else:
-        return frame
+        raise ValueError(f"Unknown deblurring method: {method}")
+
+    # Transfer back to CPU
+    b_cpu = to_cpu(b_proc)
+    g_cpu = to_cpu(g_proc)
+    r_cpu = to_cpu(r_proc)
+
+    # Merge channels
+    processed = cv2.merge([b_cpu, g_cpu, r_cpu])
+
+    # Convert back to uint8
+    processed = np.clip(processed, 0, 255).astype(np.uint8)
+
+    return processed
 
 
-def apply_clahe(frame: np.ndarray) -> np.ndarray:
-    """Apply Contrast Limited Adaptive Histogram Equalization."""
-    clahe = cv2.createCLAHE(clipLimit=config.CLAHE_CLIP_LIMIT,
-                           tileGridSize=config.CLAHE_TILE_GRID_SIZE)
-
-    if len(frame.shape) == 2:
-        return clahe.apply(frame)
-    else:
-        result = np.zeros_like(frame)
-        for i in range(frame.shape[2]):
-            result[:, :, i] = clahe.apply(frame[:, :, i])
-        return result
-
-
-def process_video(input_path: str, output_path: str, use_gpu: bool = None) -> None:
+def create_side_by_side(original, processed, scale=0.5):
     """
-    Process video with GPU-accelerated deblurring pipeline.
-    Memory-efficient streaming implementation.
+    Create side-by-side comparison of original and processed frames.
 
     Args:
-        input_path: Path to input video
-        output_path: Path to output video
-        use_gpu: Whether to use GPU (None = auto-detect from config)
+        original: Original frame
+        processed: Processed frame
+        scale: Display scale factor
+
+    Returns:
+        Combined frame with both images side-by-side
     """
-    # Determine GPU usage
-    if use_gpu is None:
-        use_gpu = config.USE_GPU and GPU_AVAILABLE
+    # Resize for display
+    if scale != 1.0:
+        height, width = original.shape[:2]
+        new_height = int(height * scale)
+        new_width = int(width * scale)
 
-    print("=" * 60)
-    print("CLASSICAL VIDEO DEBLURRING & ENHANCEMENT")
-    if use_gpu and GPU_AVAILABLE:
-        print("GPU ACCELERATION: ✓ ENABLED")
-        device_info = get_device_info()
-        if device_info['device_name']:
-            print(f"GPU Device: {device_info['device_name']}")
+        original_resized = cv2.resize(original, (new_width, new_height))
+        processed_resized = cv2.resize(processed, (new_width, new_height))
     else:
-        print("GPU ACCELERATION: ✗ DISABLED (using CPU)")
-    print("=" * 60)
+        original_resized = original
+        processed_resized = processed
 
-    # Get video info
-    try:
-        video_info = get_video_info(input_path)
-        print(f"Input video: {input_path}")
-        print(f"Resolution: {video_info['width']}x{video_info['height']}")
-        print(f"FPS: {video_info['fps']}")
-        print(f"Total frames: {video_info['frame_count']}")
-    except Exception as e:
-        print(f"Error reading video info: {e}")
-        return
+    # Add labels
+    original_labeled = original_resized.copy()
+    processed_labeled = processed_resized.copy()
 
-    print("\nProcessing settings:")
-    print(f"  Grayscale: {config.CONVERT_TO_GRAYSCALE}")
-    print(f"  Stabilization: {config.ENABLE_STABILIZATION}")
-    print(f"  Denoising: {config.DENOISE_METHOD}")
-    print(f"  PSF type: {config.PSF_TYPE}")
-    print(f"  Deblur method: {config.DEBLUR_METHOD}")
-    print(f"  CLAHE: {config.APPLY_CLAHE}")
-    print(f"  Memory-efficient streaming: ✓ ENABLED")
-    print()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.7
+    thickness = 2
 
-    # Create output directory
-    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
+    cv2.putText(original_labeled, "Original", (10, 30), font, font_scale, (0, 255, 0), thickness)
+    cv2.putText(processed_labeled, "Enhanced", (10, 30), font, font_scale, (0, 255, 0), thickness)
 
-    # Initialize variables
-    prev_frame = None
-    psf = None
-    video_writer = None
+    # Combine horizontally
+    combined = np.hstack([original_labeled, processed_labeled])
 
-    try:
-        # Process frames with streaming (no buffering in memory)
-        for frame_num, frame in iterate_frames(input_path):
-            print(f"Processing frame {frame_num + 1}/{video_info['frame_count']}...", end='\r')
-
-            # Convert to grayscale if configured
-            if config.CONVERT_TO_GRAYSCALE:
-                frame_gray = to_gray(frame)
-            else:
-                frame_gray = frame
-
-            # Stabilization
-            if config.ENABLE_STABILIZATION and prev_frame is not None:
-                frame_stabilized = stabilize_frame(prev_frame, frame_gray)
-            else:
-                frame_stabilized = frame_gray
-
-            # Denoising
-            frame_denoised = apply_denoising(frame_stabilized, config.DENOISE_METHOD)
-
-            # Convert to float for deblurring
-            frame_float = to_float(frame_denoised)
-
-            # Get PSF (only once, or per frame if estimating)
-            if psf is None or config.PSF_TYPE == "estimate":
-                psf = get_psf(frame_float)
-
-            # Deblurring (GPU-accelerated if available)
-            frame_deblurred = apply_deblurring(frame_float, psf, config.DEBLUR_METHOD,
-                                              use_gpu=use_gpu)
-
-            # Convert back to uint8
-            frame_restored = from_float(frame_deblurred)
-
-            # CLAHE enhancement
-            if config.APPLY_CLAHE:
-                frame_enhanced = apply_clahe(frame_restored)
-            else:
-                frame_enhanced = frame_restored
-
-            # Initialize video writer on first frame
-            if video_writer is None:
-                height, width = frame_enhanced.shape[:2]
-                is_color = len(frame_enhanced.shape) == 3
-                video_writer = VideoWriter(
-                    output_path,
-                    video_info['fps'],
-                    (width, height),
-                    is_color
-                )
-                print(f"Initialized streaming video writer: {output_path}")
-
-            # Write frame immediately (no buffering!)
-            video_writer.write_frame(frame_enhanced)
-
-            # Store only previous frame for stabilization (minimal memory)
-            if config.ENABLE_STABILIZATION:
-                prev_frame = frame_gray.copy()
-
-            # Clean up intermediate arrays to free memory
-            del frame_denoised, frame_float, frame_deblurred, frame_restored
-
-        print()
-        print(f"\nProcessed {video_info['frame_count']} frames")
-
-    finally:
-        # Release video writer
-        if video_writer is not None:
-            video_writer.release()
-            print(f"Video saved to: {output_path}")
-
-    print("Processing complete!")
-    print("=" * 60)
+    return combined
 
 
 def main():
-    """Main entry point."""
-    input_path = config.INPUT_VIDEO_PATH
-    output_path = config.OUTPUT_VIDEO_PATH
+    """Main processing function with real-time side-by-side display"""
 
-    if not os.path.exists(input_path):
-        print(f"Error: Input video not found: {input_path}")
-        print("\nPlease update the INPUT_VIDEO_PATH in config.py")
-        print("or place your video at the specified location.")
+    print("=" * 60)
+    print("GPU-Accelerated Drone Video Enhancement")
+    print("=" * 60)
+
+    # Check GPU availability
+    if not is_gpu_available():
+        print("\nERROR: GPU (CuPy) not available!")
+        print("Please install CuPy for GPU acceleration.")
         return
 
-    process_video(input_path, output_path)
+    print(f"\n✓ GPU Available: {GPU_AVAILABLE}")
+    print(f"✓ Input video: {config.INPUT_VIDEO_PATH}")
+    print(f"✓ Deblur method: {config.DEBLUR_METHOD}")
+    print(f"✓ Display mode: Side-by-side comparison\n")
+
+    # Open video
+    cap = cv2.VideoCapture(config.INPUT_VIDEO_PATH)
+    if not cap.isOpened():
+        print(f"ERROR: Cannot open video file: {config.INPUT_VIDEO_PATH}")
+        return
+
+    # Get video properties
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    print(f"Video properties:")
+    print(f"  Resolution: {width}x{height}")
+    print(f"  FPS: {fps}")
+    print(f"  Total frames: {total_frames}")
+
+    # Create PSF
+    print(f"\nCreating PSF ({config.PSF_TYPE})...")
+    if config.PSF_TYPE == "motion":
+        psf = create_motion_psf(config.MOTION_LENGTH, config.MOTION_ANGLE)
+    else:
+        psf = gaussian_psf(config.GAUSSIAN_PSF_SIZE, config.GAUSSIAN_PSF_SIGMA)
+
+    # Transfer PSF to GPU
+    psf_gpu = to_gpu(psf.astype(np.float32))
+    print(f"✓ PSF shape: {psf.shape}")
+
+    # Setup output video writer
+    output_path = Path(config.OUTPUT_VIDEO_PATH)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+
+    # Processing loop
+    frame_count = 0
+    processed_count = 0
+    start_time = time.time()
+
+    print("\nProcessing video...")
+    print("Press 'q' to quit, 'p' to pause/resume")
+    print("-" * 60)
+
+    paused = False
+
+    try:
+        while True:
+            if not paused:
+                ret, frame = cap.read()
+
+                if not ret:
+                    break
+
+                frame_count += 1
+
+                # Skip frames if configured
+                if config.SKIP_FRAMES > 1 and frame_count % config.SKIP_FRAMES != 0:
+                    continue
+
+                # Check max frames limit
+                if config.MAX_FRAMES and processed_count >= config.MAX_FRAMES:
+                    break
+
+                # Process frame
+                frame_start = time.time()
+                processed_frame = process_frame_gpu(frame, psf_gpu, method=config.DEBLUR_METHOD)
+                frame_time = time.time() - frame_start
+
+                # Write to output video
+                out.write(processed_frame)
+                processed_count += 1
+
+                # Display side-by-side comparison
+                if config.DISPLAY_REALTIME and config.DISPLAY_COMPARISON:
+                    combined = create_side_by_side(frame, processed_frame, scale=config.DISPLAY_SCALE)
+
+                    # Add processing info
+                    info_text = f"Frame: {processed_count}/{total_frames} | FPS: {1.0/frame_time:.1f} | Time: {frame_time*1000:.1f}ms"
+                    cv2.putText(combined, info_text, (10, combined.shape[0] - 10),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+                    cv2.imshow('Video Enhancement - Original vs Enhanced', combined)
+                elif config.DISPLAY_REALTIME:
+                    cv2.imshow('Enhanced Video', processed_frame)
+
+                # Progress update
+                if processed_count % 10 == 0:
+                    elapsed = time.time() - start_time
+                    fps_avg = processed_count / elapsed if elapsed > 0 else 0
+                    eta = (total_frames - processed_count) / fps_avg if fps_avg > 0 else 0
+
+                    print(f"Frame {processed_count}/{total_frames} | "
+                          f"Avg FPS: {fps_avg:.2f} | "
+                          f"ETA: {eta:.1f}s")
+
+            # Handle keyboard input
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                print("\nStopping...")
+                break
+            elif key == ord('p'):
+                paused = not paused
+                print(f"\n{'Paused' if paused else 'Resumed'}")
+
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user")
+
+    finally:
+        # Cleanup
+        cap.release()
+        out.release()
+        cv2.destroyAllWindows()
+
+        # Final statistics
+        total_time = time.time() - start_time
+        print("\n" + "=" * 60)
+        print("Processing complete!")
+        print(f"  Frames processed: {processed_count}")
+        print(f"  Total time: {total_time:.2f}s")
+        print(f"  Average FPS: {processed_count/total_time:.2f}")
+        print(f"  Output saved to: {output_path}")
+        print("=" * 60)
 
 
 if __name__ == "__main__":
     main()
+

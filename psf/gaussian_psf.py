@@ -2,7 +2,6 @@
 Gaussian PSF (Point Spread Function) generation.
 """
 import numpy as np
-import cv2
 
 
 def gaussian_psf(size=(15, 15), sigma=5.0):
@@ -16,17 +15,19 @@ def gaussian_psf(size=(15, 15), sigma=5.0):
     Returns:
         2D Gaussian PSF (normalized)
     """
-    # Create coordinate grids
-    h, w = size
-    center_y, center_x = h // 2, w // 2
+    if isinstance(size, int):
+        size = (size, size)
 
-    y, x = np.ogrid[:h, :w]
+    height, width = size
+    center_y, center_x = height // 2, width // 2
+
+    # Create coordinate grids
+    y, x = np.ogrid[:height, :width]
 
     # Gaussian formula
     psf = np.exp(-((x - center_x)**2 + (y - center_y)**2) / (2 * sigma**2))
 
     # Normalize so sum equals 1
-    psf = psf / np.sum(psf)
+    psf /= np.sum(psf)
 
     return psf.astype(np.float32)
-

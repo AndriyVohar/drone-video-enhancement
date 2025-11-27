@@ -10,7 +10,7 @@ USE_GPU = True  # Set to False to use CPU only
 # ========================================
 # INPUT/OUTPUT
 # ========================================
-INPUT_VIDEO_PATH = "input/YTDown.com_YouTube_Media_GHCPvJU_wFY_001_1080p.mp4"
+INPUT_VIDEO_PATH = "input/856478-uhd_4096_2160_25fps.mp4"
 OUTPUT_VIDEO_PATH = "output/enhanced_video.mp4"
 
 # ========================================
@@ -30,7 +30,7 @@ BILATERAL_SIGMA_COLOR = 75
 BILATERAL_SIGMA_SPACE = 75
 
 # Non-local means denoising parameters
-NLM_H = 10
+NLM_H = 10  # Non-local means denoising strength
 NLM_PATCH_SIZE = 7
 NLM_SEARCH_SIZE = 21
 
@@ -42,7 +42,7 @@ PSF_TYPE = "motion"
 PSF_SIZE = (15, 15)
 
 # Motion blur PSF parameters
-MOTION_LENGTH = 1.5
+MOTION_LENGTH = 3
 MOTION_ANGLE = 0
 
 # Gaussian PSF parameters
@@ -77,3 +77,16 @@ APPLY_SHARPENING = False
 SHARPENING_AMOUNT = 0.3
 
 ENABLE_STABILIZATION = False
+
+# ========================================
+# VIDEO PROCESSING
+# ========================================
+SKIP_FRAMES = 1  # Process every Nth frame
+MAX_FRAMES = None  # None for all frames
+
+# ========================================
+# DISPLAY SETTINGS
+# ========================================
+DISPLAY_REALTIME = True  # Show processing in real-time
+DISPLAY_COMPARISON = True  # Show original and processed side-by-side
+DISPLAY_SCALE = 0.5  # Scale factor for display (0.5 = 50% size)
