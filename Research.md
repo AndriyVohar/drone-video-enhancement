@@ -452,7 +452,7 @@ Where $I_x, I_y, I_t$ are partial derivatives of intensity.
 
 ### Farneback Dense Optical Flow
 
-This project uses Farneback's method, which:
+This project uses Farneback's method (Farnebäck, 2003), which:
 
 1. **Approximates** each neighborhood with a polynomial:
    $$f(x) \approx x^T A x + b^T x + c$$
